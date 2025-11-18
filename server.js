@@ -31,8 +31,8 @@ app.post("/contact", (req, res) => {
         })
         //message to send and other params
         const messager = {
-            form : 'Sender Name <sender@example.com>',
-            to : 'Recipient <recipient@example.com>',
+            form : email,
+            to : 'abbassia082@gmail.com',
             subject: 'Nodemailer is unicode friendly ✔',
             text: message,
             html: '<p><b>Hello</b> to myself!</p>'

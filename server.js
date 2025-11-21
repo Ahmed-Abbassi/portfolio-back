@@ -8,7 +8,10 @@ const fs = require("fs");
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: 'https://ahmedabbassi-portfolio.netlify.app/'
+}));
+
 
 // Use multer for file uploads
 const storage = multer.diskStorage({

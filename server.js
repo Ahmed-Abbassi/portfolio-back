@@ -1,43 +1,56 @@
-import nodemailer from "nodemailer";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { promisify } from "util";
+const express = require('express');
+require("dotenv").config();
+const cors = require('cors');
+const nodemailer = require("nodemailer");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
-// Multer setup for temporary memory storage (avoid disk on Vercel)
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
-const parseForm = upload.single("attachment");
+const app = express();
 
-// Helper to promisify multer
-const runMiddleware = (req, res, fn) =>
-  new Promise((resolve, reject) => {
-    fn(req, res, (result) => (result instanceof Error ? reject(result) : resolve(result)));
-  });
+app.use(cors());
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+// Use multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/"); // folder to store uploaded files temporarily
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage: storage });
+
+// Ensure uploads folder exists
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
+
+// Parse JSON for non-file fields
+app.use(express.json());
+
+// Route: receive contact form
+app.post("/contact", upload.single("attachment"), async (req, res) => {
+  const { fullName, email, phone, service, message } = req.body;
+  const file = req.file;
+
+
+  if (!fullName || !email || !message) {
+    return res.status(400).json({ error: "Please fill all required fields" });
   }
 
   try {
-    await runMiddleware(req, res, parseForm);
-
-    const { fullName, email, phone, service, message } = req.body;
-    const file = req.file;
-
-    if (!fullName || !email || !message) {
-      return res.status(400).json({ error: "Please fill all required fields" });
-    }
-
+    // Nodemailer transporter
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: process.env.EMAIL,
-        pass: process.env.EMAIL_PASS,
+        user: process.env.EMAIL,       // your Gmail
+        pass: process.env.EMAIL_PASS,  // Gmail App Password
       },
     });
 
+    // Email options
     const mailOptions = {
       from: `"Portfolio Contact" <${email}>`,
       to: process.env.EMAIL,
@@ -51,14 +64,27 @@ export default async function handler(req, res) {
         <p><strong>Message:</strong></p>
         <p>${message}</p>
       `,
-      attachments: file ? [{ filename: file.originalname, content: file.buffer }] : [],
+      attachments: file ? [{
+        filename: file.originalname,
+        path: file.path
+      }] : []
     };
 
-    await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
+    console.log("Email sent: ", info.messageId);
 
-    res.status(200).json({ success: true, message: "Email sent successfully" });
-  } catch (err) {
-    console.error("Error sending email:", err);
+    // Delete the file after sending email
+    if (file) {
+      fs.unlinkSync(file.path);
+    }
+
+    res.json({ success: true, message: "Email sent successfully" });
+
+  } catch (error) {
+    console.error("Error sending email: ", error);
     res.status(500).json({ error: "Failed to send email" });
   }
-}
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
